@@ -1,56 +1,13 @@
 // ==UserScript==
-// @name              Toc Bar, auto-generating table of content
-// @name:zh-CN        Toc Bar, 自动生成文章大纲。知乎、微信公众号等阅读好伴侣
-// @author            hikerpig
+// @name       Toc Bar二改版, 自动生成文章大纲。
+// @author            wcbblll
 // @namespace         https://github.com/hikerpig
 // @license           MIT
 // @description       A floating table of content widget
 // @description:zh-CN 自动生成文章大纲目录，在页面右侧展示一个浮动的组件。覆盖常用在线阅读资讯站（技术向）。github/medium/MDN/掘金/简书等
-// @version           1.9.6
-// @match             *://www.jianshu.com/p/*
-// @match             *://cdn2.jianshu.io/p/*
-// @match             *://zhuanlan.zhihu.com/p/*
-// @match             *://www.zhihu.com/pub/reader/*
-// @match             *://mp.weixin.qq.com/s*
-// @match             *://cnodejs.org/topic/*
-// @match             *://*zcfy.cc/article/*
-// @match             *://juejin.cn/post/*
-// @match             *://juejin.cn/book/*
-// @match             *://dev.to/*/*
-// @exclude           *://dev.to/settings/*
-// @match             *://web.dev/*
-// @match             *://medium.com/*
-// @exclude           *://medium.com/media/*
-// @match             *://itnext.io/*
-// @match             *://python-patterns.guide/*
-// @match             *://www.mysqltutorial.org/*
-// @match             *://en.wikipedia.org/*
-// @match             *://vuejs.org/*
-// @match             *://docs.python.org/*
-// @match             *://packaging.python.org/*
-// @match             *://*.readthedocs.io/*
-// @match             *://docs.djangoproject.com/*
-// @match             *://www.cnblogs.com/*
-// @match             *://bigsearcher.com/*
-// @match             *://ffmpeg.org/*
-// @match             *://www.ruanyifeng.com/*
-// @match             *://stackoverflow.blog/*
-// @match             *://realpython.com/*
-// @match             *://www.infoq.cn/article/*
-// @match             *://towardsdatascience.com/*
-// @match             *://hackernoon.com/*
-// @match             *://css-tricks.com/*
-// @match             *://www.smashingmagazine.com/*/*
-// @match             *://distill.pub/*
-// @match             *://github.com/*/*
-// @match             *://github.com/*/issues/*
-// @match             *://developer.mozilla.org/*/docs/*
-// @match             *://learning.oreilly.com/library/view/*
-// @match             *://developer.chrome.com/extensions/*
-// @match             *://app.getpocket.com/read/*
-// @match             *://indepth.dev/posts/*
-// @match             *://gitlab.com/*
-// @run-at            document-idle
+// @version           0.1
+// @match            *://*/*
+// @run-at            document-end
 // @grant             GM_getResourceText
 // @grant             GM_addStyle
 // @grant             GM_setValue
@@ -58,267 +15,11 @@
 // @require           https://cdnjs.cloudflare.com/ajax/libs/tocbot/4.18.2/tocbot.min.js
 // @icon              https://raw.githubusercontent.com/hikerpig/toc-bar-userscript/master/toc-logo.svg
 // @homepageURL       https://github.com/hikerpig/toc-bar-userscript
-// @downloadURL       https://raw.githubusercontent.com/hikerpig/toc-bar-userscript/master/toc-bar.user.js
+// @downloadURL https://update.greasyfork.org/scripts/406337/Toc%20Bar%2C%20auto-generating%20table%20of%20content.user.js
+// @updateURL https://update.greasyfork.org/scripts/406337/Toc%20Bar%2C%20auto-generating%20table%20of%20content.meta.js
 // ==/UserScript==
 
 (function () {
-  /**
-   * @typedef {Object} SiteSetting
-   * @property {string} contentSelector
-   * @property {string} siteName
-   * @property {Object} style
-   * @property {Number} scrollSmoothOffset
-   * @property {Number} initialTop
-   * @property {Number} headingsOffset
-   * @property {() => Boolean} shouldShow
-   * @property {(ele) => HTMLElement} findHeaderId
-   * @property {(e) => void} onClick
-   * @property {(tocBar: TocBar) => void} onInit
-   */
-
-  /** @type {{[key: string]: Partial<SiteSetting>}} */
-  const SITE_SETTINGS = {
-    jianshu: {
-      contentSelector: '.ouvJEz',
-      style: {
-        top: '55px',
-        color: '#ea6f5a',
-      },
-    },
-    'zhuanlan.zhihu.com': {
-      contentSelector: 'article',
-      scrollSmoothOffset: -52,
-      shouldShow() {
-        return location.pathname.startsWith('/p/')
-      },
-    },
-    'www.zhihu.com': {
-      contentSelector: '.reader-chapter-content',
-      scrollSmoothOffset: -52,
-    },
-    zcfy: {
-      contentSelector: '.markdown-body',
-    },
-    qq: {
-      contentSelector: '.rich_media_content',
-    },
-    'juejin.cn': function() {
-      let contentSelector = '.article' // post
-      if (/\/book\//.test(location.pathname)) {
-        contentSelector = '.book-body'
-      }
-      return {
-        contentSelector,
-      }
-    },
-    'dev.to': {
-      contentSelector: 'article',
-      scrollSmoothOffset: -56,
-      shouldShow() {
-        return ['/search', '/top/'].every(s => !location.pathname.startsWith(s))
-      },
-    },
-    'medium.com': {
-      contentSelector: 'article'
-    },
-    'docs.djangoproject.com': {
-      contentSelector: '#docs-content'
-    },
-    'hackernoon.com': {
-      contentSelector: 'main',
-      scrollSmoothOffset: -80,
-    },
-    'towardsdatascience.com': {
-      contentSelector: 'article'
-    },
-    'css-tricks.com': {
-      contentSelector: 'main'
-    },
-    'distill.pub': {
-      contentSelector: 'body'
-    },
-    'smashingmagazine': {
-      contentSelector: 'article'
-    },
-    'web.dev': {
-      contentSelector: '#content'
-    },
-    'python-patterns.guide': {
-      contentSelector: '.section',
-    },
-    'www.mysqltutorial.org': {
-      contentSelector: 'article',
-    },
-    'github.com': function () {
-      const README_SEL = '.entry-content'
-      const WIKI_CONTENT_SEL = '#wiki-body'
-      const ISSUE_CONTENT_SEL = '.comment .comment-body'
-
-      const matchedSel = [README_SEL, ISSUE_CONTENT_SEL, WIKI_CONTENT_SEL].find((sel) => {
-        const c = document.querySelector(sel)
-        if (c) {
-          return true
-        }
-      })
-
-      if (!matchedSel) {
-        return {
-          contentSelect: false,
-        }
-      }
-
-      const isIssueDetail = /\/issues\//.test(location.pathname)
-      const ISSUE_DETAIL_HEADING_OFFSET = 60
-
-      /** Ugly hack for github issues */
-      const onClick = isIssueDetail ? function (e) {
-        const href = e.target.getAttribute('href')
-        const header = document.body.querySelector(href)
-        if (header) {
-          const rect = header.getBoundingClientRect()
-          const currentWindowScrollTop = document.documentElement.scrollTop
-          const scrollY = rect.y + currentWindowScrollTop - ISSUE_DETAIL_HEADING_OFFSET
-
-          window.scrollTo(0, scrollY)
-
-          location.hash = href
-
-          e.preventDefault()
-          e.stopPropagation()
-        }
-      }: null
-
-      return {
-        siteName: 'github.com',
-        contentSelector: matchedSel,
-        hasInnerContainers: isIssueDetail ? true: false,
-        scrollSmoothOffset: isIssueDetail ? -ISSUE_DETAIL_HEADING_OFFSET: 0,
-        headingsOffset: isIssueDetail ? ISSUE_DETAIL_HEADING_OFFSET: 0,
-        initialTop: 500,
-        onClick,
-        findHeaderId(ele) {
-          let id
-          let anchor = ele.querySelector('.anchor')
-          if (anchor) id = anchor.getAttribute('id')
-
-          if (!anchor) {
-            anchor = ele.querySelector('a')
-            if (anchor) id = anchor.hash.replace(/^#/, '')
-          }
-          return id
-        },
-      }
-    },
-    'developer.mozilla.org': {
-      contentSelector: '#content',
-      onInit() {
-        setTimeout(() => {
-          tocbot.refresh()
-        }, 2000)
-      }
-    },
-    'learning.oreilly.com': {
-      contentSelector: '#sbo-rt-content'
-    },
-    'developer.chrome.com': {
-      contentSelector: 'article'
-    },
-    'www.infoq.cn': {
-      contentSelector: '.article-main',
-      scrollSmoothOffset: -107
-    },
-    'app.getpocket.com': {
-      contentSelector: '[role=main]',
-    },
-    'indepth.dev': {
-      contentSelector: '.content',
-    },
-    'gitlab.com': {
-      contentSelector:  '.file-content',
-      scrollSmoothOffset: -40
-    },
-    'docs.celeryproject.org': {
-      contentSelector: '[role=main]',
-    },
-    'docs.python.org': {
-      contentSelector: '[role=main]',
-    },
-    'packaging.python.org': {
-      contentSelector: '[role=main]',
-    },
-    'readthedocs.io': {
-      contentSelector: '[role=main]',
-    },
-    'bigsearcher.com': {
-      contentSelector: 'body',
-    },
-    'ffmpeg.org': {
-      contentSelector: '#page-content-wrapper',
-    },
-    'www.ruanyifeng.com': {
-      contentSelector: 'article',
-    },
-    'realpython.com': {
-      contentSelector: '.main-content',
-    },
-    'en.wikipedia.org': {
-      contentSelector: '#content',
-    },
-    'www.cnblogs.com': {
-      contentSelector: '#main',
-    },
-    'stackoverflow.blog': {
-      contentSelector: 'article',
-    },
-    'vuejs.org': {
-      contentSelector: 'main > div',
-    },
-  }
-
-  function getSiteInfo() {
-    let siteName
-    if (SITE_SETTINGS[location.hostname]) {
-      siteName = location.hostname;
-    } else if (location.hostname.indexOf('readthedocs.io') > -1) {
-      siteName = 'readthedocs.io';
-    } else {
-      const match = location.href.match(
-        /([\d\w]+)\.(com|cn|net|org|im|io|cc|site|tv)/i
-      )
-      siteName = match ? match[1] : null
-    }
-    if (siteName && SITE_SETTINGS[siteName]) {
-      return {
-        siteName,
-        siteSetting: SITE_SETTINGS[siteName],
-      }
-    }
-  }
-
-  function getPageTocOptions() {
-    let siteInfo = getSiteInfo()
-    if (siteInfo) {
-      if (typeof siteInfo.siteSetting === 'function') {
-        return siteInfo.siteSetting()
-      }
-
-      let siteSetting = { ...siteInfo.siteSetting }
-      if (siteSetting.shouldShow && !siteSetting.shouldShow()) {
-        return
-      }
-      if (typeof siteSetting.contentSelector === 'function') {
-        const contentSelector = siteSetting.contentSelector()
-        if (!contentSelector) return
-        siteSetting = {...siteSetting, contentSelector}
-      }
-      if (typeof siteSetting.scrollSmoothOffset === 'function') {
-        siteSetting.scrollSmoothOffset = siteSetting.scrollSmoothOffset()
-      }
-
-      console.log('[toc-bar] found site info for', siteInfo.siteName)
-      return siteSetting
-    }
-  }
 
   function guessThemeColor() {
     const meta = document.head.querySelector('meta[name="theme-color"]')
@@ -332,7 +33,7 @@
    * @return {String}
    */
   function doContentHash(content) {
-    const val = content.split('').reduce((prevHash, currVal) => (((prevHash << 5) - prevHash) + currVal.charCodeAt(0))|0, 0);
+    const val = content.split('').reduce((prevHash, currVal) => (((prevHash << 5) - prevHash) + currVal.charCodeAt(0)) | 0, 0);
     return val.toString(32)
   }
 
@@ -580,7 +281,7 @@ a.toc-link {
    * @class
    * @param {TocBarOptions} options
    */
-  function TocBar(options={}) {
+  function TocBar(options = {}) {
     this.options = options
 
     // inject style
@@ -854,7 +555,7 @@ a.toc-link {
           this.element.style.right = "0px"
           const cachedPosition = POSITION_STORAGE.cache
           if (!isEmpty(cachedPosition)) {
-            POSITION_STORAGE.set(null, {...cachedPosition, right: 0 })
+            POSITION_STORAGE.set(null, { ...cachedPosition, right: 0 })
           }
         }
       }
@@ -865,8 +566,8 @@ a.toc-link {
      * @method TocBar
      */
     toggleScheme(isDark) {
-      const isDarkMode = typeof isDark === 'undefined' ? !this.isDarkMode: isDark
-      this.element.setAttribute('colorscheme', isDarkMode ? 'dark': 'light')
+      const isDarkMode = typeof isDark === 'undefined' ? !this.isDarkMode : isDark
+      this.element.setAttribute('colorscheme', isDarkMode ? 'dark' : 'light')
       console.log('[toc-bar] toggle scheme', isDarkMode)
       this.isDarkMode = isDarkMode
 
@@ -885,14 +586,249 @@ a.toc-link {
   // ----------------end TocBar -------------------
 
   function main() {
-    const options = getPageTocOptions()
-
+    let options
+    if (!options) {
+      const selector = getEleId(getMainBox(document.body))
+      if (selector) {
+        options = { contentSelector: selector }
+      }
+    }
+    console.log(options);
     if (options) {
       const tocBar = new TocBar(options)
       tocBar.initTocbot(options)
       tocBar.refreshStyle()
+      loopFunc(() => {
+        // GM_addStyle(TOC_BAR_STYLE)
+        generateList()
+      })
     }
   }
 
   main()
+
+
+  // 给一个元素，遍历所有属性，通过querySelectorAll获取元素,判断是否唯一，找到唯一的元素并返回属性名
+
+  function getEleId(ele) {
+    if (!ele) return null
+    const attrs = ele.attributes
+    const tagName = ele.nodeName.toLowerCase()
+    for (const attr of attrs) {
+      const { name, value } = attr
+      const selector = `${tagName}[${name}="${value}"]`
+      const elements = document.querySelectorAll(selector)
+      if (elements.length === 1) {
+        return selector
+      }
+    }
+    return null
+  }
+
+  // 根据元素是否在可见区，面积不为0，判断元素是否存在
+
+  function getMainBoxByElement(element) {
+    if (!element) return null
+    const elementRect = element.getBoundingClientRect()
+    if (elementRect.width === 0 || elementRect.height === 0) return null
+    // 根据元素的属性，非display:none为存在
+    if (element.style.display !== 'none') return element
+    // getComputedStyle(divElement).display不为none为存在
+    if (getComputedStyle(element).display !== 'none') return element
+    return null
+  }
+
+  // 给出一组元素，根据面积找个最大的元素
+
+  function getMainBoxByElements(elements) {
+    if (!elements) return null
+    const parent = elements[0].parentNode
+    let mainBox
+    let maxArea = 0
+    const eleLen = elements.length
+    for (let i = 0; i < eleLen; i++) {
+      const element = elements[i]
+      if (!getMainBoxByElement(element)) continue
+      const elementRect = element.getBoundingClientRect()
+      const area = elementRect.width * elementRect.height
+      if (area > maxArea) {
+        maxArea = area
+        mainBox = element
+      }
+    }
+    // 比较父元素与父元素下最大子元素的面积,小于30%,则认为父元素为mainBox
+    const parentRect = parent.getBoundingClientRect()
+    const parentArea = parentRect.width * parentRect.height
+    if (maxArea / parentArea < 0.3) return parent
+    return mainBox
+  }
+
+  /**
+   * 获取页面上的主要元素
+   */
+
+  function getMainBox(box) {
+    const mainBox = getMainBoxByElements([...box.children])
+    if (!mainBox || mainBox.children.length === 0) return box
+    const childMainBox = getMainBoxByElements([...mainBox.children])
+    // 如果childMainBox === mainBox,可能子元素面积小于父元素面积的30%,则返回mainBox
+    if (!childMainBox || childMainBox === mainBox) return mainBox
+    // console.log('父子元素', mainBox, childMainBox);
+    const mainBoxRect = mainBox.getBoundingClientRect()
+    const childMainBoxRect = childMainBox.getBoundingClientRect()
+    // 父子长宽一样,继续往下遍历
+    if (mainBoxRect.width === childMainBoxRect.width && mainBoxRect.height === childMainBoxRect.height) {
+      return getMainBox(mainBox)
+    }
+    // 父顶天立地，且小于屏幕宽度30以内，继续往下遍历
+    if (mainBoxRect.x === 0 && mainBoxRect.left === 0 || window.innerWidth - mainBoxRect.width < 30) {
+      return getMainBox(mainBox)
+    }
+    return childMainBox
+  }
+
+  // 给一个选择器字符串，通过,分割,数组里的每个元素都找不到元素时，返回true,否则返回false
+
+  function hasEle(input) {
+    try {
+      input = input.split(',')
+    } catch (error) { }
+    if (typeof input === 'string') {
+      input = [input]
+    }
+    const len = input.reduce((prev, curr) => {
+      const elements = document.querySelectorAll(curr)
+      prev += elements.length
+      return prev
+    }, 0)
+    if (len <= 0) return false
+    return true
+  }
+
+  // 找到有共有class的列表
+  function getListGroup(node, groups = new Set()) {
+    if (!node || !node.children.length) return
+    const children = [...node.children]
+    const childLen = children.length
+    // 有class的node
+    const hasClassNodes = children.filter(it => it.className.trim && it.className.trim() !== '')
+    const hasClassLen = hasClassNodes.length
+    if (childLen < 5) {
+      for (let i = 0; i < hasClassLen; i++) {
+        getListGroup(hasClassNodes[i], groups)
+      }
+    }
+    let currentIndex = 0
+    // 共有class
+    const commonClass = new Set()
+
+    while (currentIndex < hasClassLen) {
+      const currentChild = hasClassNodes[currentIndex]
+      // 获取当前元素的class列表
+      const classList = currentChild.className.split(' ')
+      // 获取当前索引后面所有元素的classList
+      const nextClassList = hasClassNodes.slice(currentIndex + 1).map(child => child.classList)
+      classList.forEach(classItem => {
+        if (nextClassList.some(item => item.contains(classItem))) {
+          commonClass.add(classItem)
+        }
+      });
+      currentIndex++
+    }
+    if (commonClass.size > 0) {
+      const commonClassName = [...commonClass].join(' ')
+      const nodeList = document.querySelectorAll('.' + commonClassName)
+      if (nodeList.length > 0) {
+        groups.add(JSON.stringify({
+          name: commonClassName,
+          parentName: node.className,
+        }))
+      }
+    }
+    // debugger
+    return [...groups].map(group => JSON.parse(group))
+  }
+
+  // 生成uuid
+  function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  function $(className, parentDom = document) {
+    try {
+      className = className.trim().split(' ').join('.')
+      return parentDom.querySelector('.' + className)
+    } catch (error) {
+      return null
+    }
+  }
+  function $$(className, parentDom = document) {
+    try {
+      className = className.trim().split(' ').join('.')
+      return parentDom.querySelectorAll('.' + className)
+    } catch (error) {
+      return null
+    }
+  }
+
+  function generateList() {
+    try {
+      $('toc-bar__toc').innerHTML = ''
+    } catch (error) { }
+    const groupList = getListGroup(getMainBox(document.body))
+    console.log('groupList', groupList);
+
+    const fragment = document.createDocumentFragment();
+    groupList.forEach(({ name, parentName }) => {
+      const nodes = [...$$(name, $(parentName))]
+      const ul = document.createElement('ul')
+      ul.classList.add('toc-list')
+      if (nodes.length > 0 && nodes.every(node => node.nodeName !== 'A')) {
+        nodes.forEach(node => {
+          const id = uuid()
+          const domA = node.querySelector('a')
+          if (!domA) return
+          if (!domA.id) domA.id = id
+          const li = document.createElement('li')
+          const a = document.createElement('a')
+          a.textContent = domA.textContent
+          a.href = '#' + (domA && domA.id || id)
+          a.classList.add('toc-link')
+          li.classList.add('toc-list-item')
+          li.appendChild(a)
+          ul.appendChild(li)
+        })
+        fragment.appendChild(ul)
+      }
+    })
+    try {
+      $('toc-bar__toc').appendChild(fragment)
+    } catch (error) {
+      console.log('appendChild错误', error);
+      const tocDom = document.createElement('div')
+      tocDom.id = 'toc-bar'
+      tocDom.className = 'toc-bar toc-bar__no-print'
+      tocDom.appendChild(fragment)
+      document.body.appendChild(tocDom)
+    }
+  }
+
+  function loopFunc(fn) {
+    function callback(mutationsList, observer) {
+      if (lastExecutionTime + delay < Date.now()) {
+        fn(mutationsList, observer)
+        lastExecutionTime = Date.now();
+      }
+    }
+
+    let observer = new MutationObserver(callback);
+
+    let delay = 500; // 间隔时间，单位毫秒
+    let lastExecutionTime = 0;
+
+    observer.observe(document.body, { childList: true, attributes: true });
+  }
 })()
