@@ -14,9 +14,6 @@
 // @grant             GM_getValue
 // @require           https://cdnjs.cloudflare.com/ajax/libs/tocbot/4.18.2/tocbot.min.js
 // @icon              https://raw.githubusercontent.com/hikerpig/toc-bar-userscript/master/toc-logo.svg
-// @homepageURL       https://github.com/hikerpig/toc-bar-userscript
-// @downloadURL https://update.greasyfork.org/scripts/406337/Toc%20Bar%2C%20auto-generating%20table%20of%20content.user.js
-// @updateURL https://update.greasyfork.org/scripts/406337/Toc%20Bar%2C%20auto-generating%20table%20of%20content.meta.js
 // ==/UserScript==
 
 (function () {
@@ -221,24 +218,24 @@ a.toc-link {
   height: 100%;
 }
 
-.is-collapsible {
-  max-height: 1000px;
-  overflow: hidden;
-  transition: all 300ms ease-in-out;
-}
+// .is-collapsible {
+//   max-height: 1000px;
+//   overflow: hidden;
+//   transition: all 300ms ease-in-out;
+// }
 
-.is-collapsed {
-  max-height: 0;
-}
+// .is-collapsed {
+//   max-height: 0;
+// }
 
-.is-position-fixed {
-  position: fixed !important;
-  top: 0;
-}
+// .is-position-fixed {
+//   position: fixed !important;
+//   top: 0;
+// }
 
-.is-active-link {
-  font-weight: 700;
-}
+// .is-active-link {
+//   font-weight: 700;
+// }
 
 .toc-link::before {
   background-color: var(--toc-bar-background-color);
@@ -587,36 +584,39 @@ a.toc-link {
 
   function main() {
     let options
-    if (!options) {
-      const selector = getEleId(getMainBox(document.body))
-      if (selector) {
-        options = { contentSelector: selector }
+    loopFunc(() => {
+      if (!options) {
+        console.log(getMainBox(document.body));
+        const selector = getEleId(getMainBox(document.body))
+        if (selector) {
+          options = { contentSelector: selector }
+        }
+        console.log(options);
+        if (options) {
+          const tocBar = new TocBar(options)
+          tocBar.initTocbot(options)
+          tocBar.refreshStyle()
+        }
       }
-    }
-    console.log(options);
-    if (options) {
-      const tocBar = new TocBar(options)
-      tocBar.initTocbot(options)
-      tocBar.refreshStyle()
-      loopFunc(() => {
-        // GM_addStyle(TOC_BAR_STYLE)
-        generateList()
-      })
-    }
+      // GM_addStyle(TOC_BAR_STYLE)
+      generateList()
+    })
   }
 
   main()
-
 
   // 给一个元素，遍历所有属性，通过querySelectorAll获取元素,判断是否唯一，找到唯一的元素并返回属性名
 
   function getEleId(ele) {
     if (!ele) return null
-    const attrs = ele.attributes
+    if (ele.id) return '#' + ele.id
     const tagName = ele.nodeName.toLowerCase()
+    if (ele.className) return tagName + '.' + ele.className.split(' ').join('.')
+    const attrs = ele.attributes
     for (const attr of attrs) {
-      const { name, value } = attr
-      const selector = `${tagName}[${name}="${value}"]`
+      const { name, value = '' } = attr
+      if (name === 'class') countinue
+      let selector = `${tagName}[${name}="${newVal}"]`
       const elements = document.querySelectorAll(selector)
       if (elements.length === 1) {
         return selector
