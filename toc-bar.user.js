@@ -218,20 +218,20 @@ a.toc-link {
   height: 100%;
 }
 
-// .is-collapsible {
-//   max-height: 1000px;
-//   overflow: hidden;
-//   transition: all 300ms ease-in-out;
-// }
+.is-toc-collapsible {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: all 300ms ease-in-out;
+}
 
-// .is-collapsed {
-//   max-height: 0;
-// }
+.is-toc-collapsed {
+  max-height: 0;
+}
 
-// .is-position-fixed {
-//   position: fixed !important;
-//   top: 0;
-// }
+.is-toc-position-fixed {
+  position: fixed !important;
+  top: 0;
+}
 
 // .is-active-link {
 //   font-weight: 700;
@@ -283,7 +283,6 @@ a.toc-link {
 
     // inject style
     GM_addStyle(TOC_BAR_STYLE)
-
     this.element = document.createElement('div')
     this.element.id = 'toc-bar'
     this.element.classList.add('toc-bar', 'toc-bar__no-print')
@@ -491,6 +490,9 @@ a.toc-link {
         {
           tocSelector: `.${TOCBOT_CONTAINTER_CLASS}`,
           scrollSmoothOffset: options.scrollSmoothOffset || 0,
+          isCollapsedClass: 'is-toc-collapsed',
+          collapsibleClass: 'is-toc-collapsible',
+          positionFixedClass: 'is-toc-position-fixed',
           headingObjectCallback(obj, ele) {
             // if there is no id on the header element, add one that derived from hash of header title
             // remove ¶ and # notation in headers text
@@ -582,24 +584,55 @@ a.toc-link {
   }
   // ----------------end TocBar -------------------
 
+  const history = window.history;
+
+  // 保存原始的 pushState 方法
+  const originalPushState = history.pushState;
+  const originalReplaceState = history.replaceState
+
+  // 重写 pushState 方法来触发自定义事件
+  history.pushState = function (e) {
+    const result = originalPushState.apply(this, arguments);
+    window.dispatchEvent(new Event('pushstate'))
+    window.dispatchEvent(new Event('urlchange'));
+    return result;
+  };
+  history.replaceState = function replaceState(...args) {
+    const newReplaceState = originalReplaceState.apply(this, args);
+    window.dispatchEvent(new Event('replacestate'));
+    window.dispatchEvent(new Event('urlchange'));
+    return newReplaceState;
+  };
+
+  function urlChange() {
+    try {
+      tocbot && tocbot.refresh()
+    } catch (error) {
+      console.warn('error in tocbot.refresh', error)
+    }
+  }
+  // 为自定义的 'urlchange' 事件添加监听器
+  window.addEventListener('popstate', urlChange);
+  window.addEventListener('urlchange', urlChange);
+
   function main() {
-    let options
+    let options, tocBar
     loopFunc(() => {
       if (!options) {
-        console.log(getMainBox(document.body));
         const selector = getEleId(getMainBox(document.body))
         if (selector) {
           options = { contentSelector: selector }
         }
         console.log(options);
-        if (options) {
-          const tocBar = new TocBar(options)
+        if (options && !tocBar) {
+          tocBar = new TocBar(options)
           tocBar.initTocbot(options)
           tocBar.refreshStyle()
         }
       }
       // GM_addStyle(TOC_BAR_STYLE)
       generateList()
+      urlChange()
     })
   }
 
@@ -615,7 +648,7 @@ a.toc-link {
     const attrs = ele.attributes
     for (const attr of attrs) {
       const { name, value = '' } = attr
-      if (name === 'class') countinue
+      if (name === 'class') continue
       let selector = `${tagName}[${name}="${newVal}"]`
       const elements = document.querySelectorAll(selector)
       if (elements.length === 1) {
