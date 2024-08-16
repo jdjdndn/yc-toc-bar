@@ -7,6 +7,7 @@
 // @description:zh-CN 自动生成文章大纲目录，在页面右侧展示一个浮动的组件。覆盖常用在线阅读资讯站（技术向）。github/medium/MDN/掘金/简书等
 // @version           0.1
 // @match            *://*/*
+// @exclude           *://www.kuaishou.com/*
 // @run-at            document-end
 // @grant             GM_getResourceText
 // @grant             GM_addStyle
@@ -17,7 +18,19 @@
 // ==/UserScript==
 
 (function () {
-
+  const headingSelector = 'h1, h2, h3, h4, h5'
+  function createHtml(policyStr, html) {
+    try {
+      if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        var trustedTypesPolicy = window.trustedTypes.createPolicy(policyStr, {
+          createHTML: (string, sink) => string
+        });
+        return trustedTypesPolicy.createHTML(html)
+      }
+    } catch (error) {
+      return html
+    }
+  }
   function guessThemeColor() {
     const meta = document.head.querySelector('meta[name="theme-color"]')
     if (meta) {
@@ -377,7 +390,7 @@ a.toc-link {
     initHeader() {
       const header = document.createElement('div')
       header.classList.add('toc-bar__header')
-      header.innerHTML = `
+      header.innerHTML = createHtml('yc-toc-bar', `
     <div class="flex toc-bar__header-left">
       <div class="toc-bar__toggle toc-bar__icon-btn" title="Toggle TOC Bar">
         ${TOC_ICON}
@@ -392,7 +405,7 @@ a.toc-link {
         ${REFRESH_ICON}
       </div>
     </div>
-    `
+    `)
       const toggleElement = header.querySelector('.toc-bar__toggle')
       toggleElement.addEventListener('click', () => {
         this.toggle()
@@ -510,7 +523,7 @@ a.toc-link {
             }
             return obj
           },
-          headingSelector: 'h1, h2, h3, h4, h5',
+          headingSelector,
           collapseDepth: 4,
         },
         options
@@ -581,6 +594,12 @@ a.toc-link {
         this.element.style.setProperty('--toc-bar-active-color', TOC_BAR_DEFAULT_ACTIVE_COLOR);
       }
     },
+    getEleDisplay() {
+      return this.element.style.display
+    },
+    setEleDisplay(display) {
+      this.element.style.display = display
+    }
   }
   // ----------------end TocBar -------------------
 
@@ -618,6 +637,8 @@ a.toc-link {
   function main() {
     let options, tocBar
     loopFunc(() => {
+      const hasTitle = hasEle(headingSelector)
+      console.log(hasTitle);
       if (!options) {
         const selector = getEleId(getMainBox(document.body))
         if (selector) {
@@ -630,13 +651,19 @@ a.toc-link {
           tocBar.refreshStyle()
         }
       }
-      // GM_addStyle(TOC_BAR_STYLE)
-      generateList()
-      urlChange()
+      const groupList = generateList(hasTitle)
+      // 有h1等标题元素或者有相似元素就显示，反之隐藏
+      if (!hasTitle && !groupList.length) {
+        if (tocBar && tocBar.eleDisplay !== 'none') tocBar.setEleDisplay('none')
+      } else {
+        if (tocBar && tocBar.eleDisplay !== 'block') tocBar.setEleDisplay('block')
+      }
     })
   }
 
+  urlChange()
   main()
+
 
   // 给一个元素，遍历所有属性，通过querySelectorAll获取元素,判断是否唯一，找到唯一的元素并返回属性名
 
@@ -649,7 +676,7 @@ a.toc-link {
     for (const attr of attrs) {
       const { name, value = '' } = attr
       if (name === 'class') continue
-      let selector = `${tagName}[${name}="${newVal}"]`
+      let selector = `${tagName}[${name}="${value}"]`
       const elements = document.querySelectorAll(selector)
       if (elements.length === 1) {
         return selector
@@ -717,6 +744,8 @@ a.toc-link {
     if (mainBoxRect.x === 0 && mainBoxRect.left === 0 || window.innerWidth - mainBoxRect.width < 30) {
       return getMainBox(mainBox)
     }
+    // 子元素宽度小于父元素宽度的30%不算
+    if (childMainBoxRect.width / mainBoxRect.width < 0.3) return mainBox
     return childMainBox
   }
 
@@ -738,48 +767,115 @@ a.toc-link {
     return true
   }
 
-  // 找到有共有class的列表
-  function getListGroup(node, groups = new Set()) {
-    if (!node || !node.children.length) return
-    const children = [...node.children]
-    const childLen = children.length
-    // 有class的node
-    const hasClassNodes = children.filter(it => it.className.trim && it.className.trim() !== '')
-    const hasClassLen = hasClassNodes.length
-    if (childLen < 5) {
-      for (let i = 0; i < hasClassLen; i++) {
-        getListGroup(hasClassNodes[i], groups)
+  // 找到面积大小一致的列表
+  function getListGroup(node, groups = []) {
+    function getGroup(node, groups) {
+      if (!node) return
+      if (node.shadowRoot) {
+        const shadowRoot = node.shadowRoot
+        const shadowChildLen = shadowRoot.childNodes.length
+        for (let i = 0; i < shadowChildLen; i++) {
+          getGroup(shadowRoot.childNodes[i], groups)
+        }
       }
-    }
-    let currentIndex = 0
-    // 共有class
-    const commonClass = new Set()
+      if (!node.children || !node.children.length) return
+      if (node.children.length < 2) {
+        getGroup(node.children[0], groups)
+        return groups
+      }
 
-    while (currentIndex < hasClassLen) {
-      const currentChild = hasClassNodes[currentIndex]
-      // 获取当前元素的class列表
-      const classList = currentChild.className.split(' ')
-      // 获取当前索引后面所有元素的classList
-      const nextClassList = hasClassNodes.slice(currentIndex + 1).map(child => child.classList)
-      classList.forEach(classItem => {
-        if (nextClassList.some(item => item.contains(classItem))) {
-          commonClass.add(classItem)
+      // 判断元素是否在可视区且可显示
+      function isElementInViewportAndVisible(element) {
+        const rect = element.getBoundingClientRect();
+        const isVisible = (rect.top >= 0 || rect.left >= 0 || rect.right < window.innerWidth || rect.bottom <= window.innerHeight);
+        const isToSmallNeed = (rect.width >= 100 && rect.height >= 20)
+        return isToSmallNeed && isVisible && (window.getComputedStyle(element).display !== 'none');
+      }
+      const children = [...node.children]
+      // 相同面积的元素列表sameList，不相同面积的元素列表noSameList
+      const sameList = [], noSameList = []
+      // 处理所有子元素,不显示或者面积为0不处理，面积大小相同的元素不处理，面积不同的元素如果遍历时查到相同的就从noSameList删除
+      const noEmptyList = children.filter((element, i) => {
+        if (!isElementInViewportAndVisible(element)) {
+          return false
+        }
+        const eleRect = element.getBoundingClientRect()
+        const eleArea = eleRect.width * eleRect.height
+        const sameListFind = sameList.find((item) => item.area === eleArea)
+        if (sameListFind) return true
+        const noSameListFind = noSameList.findIndex((item) => item.area === eleArea)
+        if (noSameListFind > -1) {
+          noSameList.splice(noSameListFind, 1)
+          sameList.push({ area: eleArea, i, cName: element.className })
+          return true
+        }
+        noSameList.push({
+          area: eleArea,
+          i,
+          ele: element
+        })
+        return true
+      })
+      // 如果同层相同面积元素个数少于5个，会放入该数组，继续找该元素下子元素相同面积节点
+      let lessList = []
+      // 再次遍历能显示元素的相同面积的子节点添加到groups
+      sameList.forEach(({ area, cName }) => {
+        const list = []
+        const noEmptyLen = noEmptyList.length
+        for (let i = 0; i < noEmptyLen; i++) {
+          const element = noEmptyList[i];
+          const eleRect = element.getBoundingClientRect()
+          const eleArea = eleRect.width * eleRect.height
+          if (eleArea === area) {
+            list.push(element)
+            continue
+          }
+
+          const regex = new RegExp(element.className.split(" ").join("|"));
+          for (const className of cName.split(" ")) {
+            // 从未添加过并且类名相似再添加进list中
+            if (regex.test(className) && !list.find(item => item === element)) {
+              list.push(element)
+            }
+          }
+        }
+        // 如果相同面积的节点数量小于5，添加到noSameList，继续往下找
+        if (list.length < 5) {
+          lessList = lessList.concat(list)
+        } else {
+          groups.push(list)
+        }
+      })
+      // 没有相同面积的元素递归处理子节点
+      const noSameLen = noSameList.length
+      for (let index = 0; index < noSameLen; index++) {
+        const i = noSameList[index].i
+        getGroup(children[i], groups)
+      }
+      lessList.forEach(item => {
+        getGroup(item, groups)
+      })
+      return groups
+    }
+    const groupList = getGroup(node, groups)
+    // 找出所有集合中含有公共父元素的集合合并，并删除已合并集合
+    function mergeAndRemoveCommonParentElementGroups(elementGroups) {
+      const mergedGroups = {};
+      elementGroups.forEach(group => {
+        const parent = group[0].parentNode;
+        if (mergedGroups[parent]) {
+          mergedGroups[parent] = mergedGroups[parent].concat(group);
+        } else {
+          mergedGroups[parent] = group;
         }
       });
-      currentIndex++
-    }
-    if (commonClass.size > 0) {
-      const commonClassName = [...commonClass].join(' ')
-      const nodeList = document.querySelectorAll('.' + commonClassName)
-      if (nodeList.length > 0) {
-        groups.add(JSON.stringify({
-          name: commonClassName,
-          parentName: node.className,
-        }))
+
+      for (const parent in mergedGroups) {
+        elementGroups = elementGroups.filter(group => group[0].parentNode !== parent);
       }
+      return Object.values(mergedGroups);
     }
-    // debugger
-    return [...groups].map(group => JSON.parse(group))
+    return mergeAndRemoveCommonParentElementGroups(groupList)
   }
 
   // 生成uuid
@@ -798,7 +894,8 @@ a.toc-link {
       return null
     }
   }
-  function $$(className, parentDom = document) {
+  function $$(className, parentDom = document.body) {
+    if (!parentDom) parentDom = document.body
     try {
       className = className.trim().split(' ').join('.')
       return parentDom.querySelectorAll('.' + className)
@@ -807,18 +904,34 @@ a.toc-link {
     }
   }
 
-  function generateList() {
-    try {
-      $('toc-bar__toc').innerHTML = ''
-    } catch (error) { }
-    const groupList = getListGroup(getMainBox(document.body))
-    console.log('groupList', groupList);
+  // 一组元素中，根据面积从大到小排列，并选取元素中有innerText的元素
+  function getListByArea(elements) {
+    return elements.sort((a, b) => {
+      const aRect = a.getBoundingClientRect()
+      const bRect = b.getBoundingClientRect()
+      return bRect.width * bRect.height - aRect.width * aRect.height
+    }).filter(it => it.innerText && it.innerText.trim() !== '')
+  }
 
+  function removeElementsByClass(className) {
+    const elements = document.getElementsByClassName(className);
+    while (elements.length > 0) {
+      elements[0].remove()
+    }
+  }
+
+  const OL_CLASS = 'yc-toc-bar-list'
+  function generateList(hasTitle) {
+    const groupList = getListGroup(getMainBox(document.body)) || []
+    console.log('groupList', groupList);
+    if (hasTitle) return []
+    // 先将所有生成的ol元素删除
+    removeElementsByClass(OL_CLASS)
     const fragment = document.createDocumentFragment();
-    groupList.forEach(({ name, parentName }) => {
-      const nodes = [...$$(name, $(parentName))]
-      const ul = document.createElement('ul')
-      ul.classList.add('toc-list')
+    groupList.forEach(nodes => {
+      const ol = document.createElement('ol')
+      ol.classList.add('toc-list')
+      ol.classList.add(OL_CLASS)
       if (nodes.length > 0 && nodes.every(node => node.nodeName !== 'A')) {
         nodes.forEach(node => {
           const id = uuid()
@@ -832,9 +945,9 @@ a.toc-link {
           a.classList.add('toc-link')
           li.classList.add('toc-list-item')
           li.appendChild(a)
-          ul.appendChild(li)
+          ol.appendChild(li)
         })
-        fragment.appendChild(ul)
+        fragment.appendChild(ol)
       }
     })
     try {
@@ -847,6 +960,7 @@ a.toc-link {
       tocDom.appendChild(fragment)
       document.body.appendChild(tocDom)
     }
+    return groupList
   }
 
   function loopFunc(fn) {
