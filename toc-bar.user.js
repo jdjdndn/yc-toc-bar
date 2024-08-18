@@ -8,6 +8,7 @@
 // @version           0.1
 // @match            *://*/*
 // @exclude           *://www.kuaishou.com/*
+// @exclude           *://dazhuan.site/*
 // @run-at            document-end
 // @grant             GM_getResourceText
 // @grant             GM_addStyle
@@ -809,6 +810,8 @@ a.toc-link {
           sameList.push({ area: eleArea, i, cName: element.className })
           return true
         }
+        // 元素里没有文字，不算
+        if (!element.innerText) return false
         noSameList.push({
           area: eleArea,
           i,
