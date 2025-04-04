@@ -788,7 +788,7 @@ a.toc-link {
       // 判断元素是否在可视区且可显示
       function isElementInViewportAndVisible(element) {
         const rect = element.getBoundingClientRect();
-        const isVisible = (rect.top >= 0 || rect.left >= 0 || rect.right < window.innerWidth || rect.bottom <= window.innerHeight);
+        const isVisible = (rect.top >= 0 || rect.left >= 0 || rect.right <= window.innerWidth || rect.bottom <= window.innerHeight);
         const isToSmallNeed = (rect.width >= 100 && rect.height >= 20)
         return isToSmallNeed && isVisible && (window.getComputedStyle(element).display !== 'none');
       }
@@ -979,6 +979,6 @@ a.toc-link {
     let delay = 500; // 间隔时间，单位毫秒
     let lastExecutionTime = 0;
 
-    observer.observe(document.body, { childList: true, attributes: true });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 })()
